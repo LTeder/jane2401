@@ -1,0 +1,13 @@
+[package]
+name = "jane2401"
+version = "0.0.1"
+authors = ["Logan Teder"]
+description = "My attempt at a solution to Jane Street's January 2024 puzzle"
+
+[dependencies]
+clap = { version = "4.3", features = ["derive"] }
+ndarray = "0.15.6"
+rand = "0.8"
+
+[profile.dev]
+opt-level = 2
