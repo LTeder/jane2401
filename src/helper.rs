@@ -1,21 +1,21 @@
 extern crate ndarray;
 
 use self::ndarray::Array2;
-use fsquares::Cell;
+use fsquares::{Cell, Board};
 use std::fs::File;
 use std::io::{self, BufRead};
 use std::path::Path;
 
-pub fn read_board_from_file(filename: &str) ->
-        io::Result<(Array2<Cell>, Vec<usize>, Vec<usize>)> {
+pub fn read_board_from_file(filename: &str) -> io::Result<Board> {
     let path = Path::new(filename);
     let file = File::open(&path)?;
     let reader = io::BufReader::new(file);
 
-    let mut board: Vec<Vec<Cell>> = Vec::new();
+    let mut grid: Vec<Vec<Cell>> = Vec::new();
     let mut dimensions: (usize, usize) = (0, 0);
     let mut section2: Vec<Vec<usize>> = Vec::new();
     let mut is_section2 = false;
+    let mut previous_line: Vec<char> = Vec::new();
 
     for (i, line) in reader.lines().enumerate() {
         let line = line?;
@@ -33,31 +33,34 @@ pub fn read_board_from_file(filename: &str) ->
         }
 
         let mut row: Vec<Cell> = Vec::new();
-        for char in line.chars() {
-            match char {
-                '|' => row.push(Cell::VerticalWall),
-                '_' => row.push(Cell::HorizontalWall),
-                num if num.is_digit(10) => {
-                    let num: usize = num.to_string().parse().unwrap();
-                    for _ in 0..num {
-                        row.push(Cell::Empty);
-                    }
-                }
-                _ => (),
+        let chars: Vec<char> = line.chars().collect();
+        for (j, char) in chars.iter().enumerate() {
+            if j % 2 == 0 {
+                continue;
             }
+
+            let top = previous_line.get(j).eq(&Some(&'_'));
+            let bottom = char.eq(&'_');
+            let left = chars.get(j - 1).eq(&Some(&'|'));
+            let right = chars.get(j + 1).eq(&Some(&'|'));
+
+            let cell = Cell::new(top, bottom, left, right);
+            row.push(cell);
         }
 
         dimensions.1 = row.len();
         dimensions.0 = i + 1;
-        board.push(row);
+        grid.push(row);
+        previous_line = chars;
     }
 
-    let flat_board: Vec<Cell> = board.into_iter().flatten().collect();
-    let ndarray_board = Array2::from_shape_vec(dimensions, flat_board).unwrap();
+    let flat_grid: Vec<Cell> = grid.into_iter().flatten().collect();
+    let ndarray_grid = Array2::from_shape_vec(dimensions, flat_grid).unwrap();
 
     let section2_flat: Vec<usize> = section2.into_iter().flatten().collect();
     let col_hashes: Vec<usize> = section2_flat[..dimensions.1].to_vec();
     let row_hashes: Vec<usize> = section2_flat[dimensions.1..].to_vec();
-
-    Ok((ndarray_board, col_hashes, row_hashes))
+    
+    let board = Board::new(ndarray_grid, col_hashes, row_hashes);
+    Ok(board)
 }

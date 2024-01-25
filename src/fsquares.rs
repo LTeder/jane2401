@@ -4,10 +4,17 @@ extern crate rand;
 use self::ndarray::Array2;
 use self::rand::Rng;
 
-pub enum Cell {
-    Empty,
-    VerticalWall,
-    HorizontalWall,
+pub struct Cell {
+    top: bool,
+    bottom: bool,
+    left: bool,
+    right: bool,
+}
+
+impl Cell {
+    pub fn new(top: bool, bottom: bool, left: bool, right: bool,) -> Self {
+        Self {top, bottom, left, right}
+    }
 }
 
 pub struct Board {
