@@ -53,6 +53,19 @@ pub fn read_board_from_file(filename: &str) -> io::Result<Board> {
         grid.push(row);
         previous_line = chars;
     }
+    
+    // For the first row, set the top flag of each cell to true
+    if let Some(first_row) = grid.first_mut() {
+        for cell in first_row {
+            cell.top = true;
+        }
+    }
+    // For the last row, set the bottom flag of each cell to true
+    if let Some(last_row) = grid.last_mut() {
+        for cell in last_row {
+            cell.bottom = true;
+        }
+    }
 
     let flat_grid: Vec<Cell> = grid.into_iter().flatten().collect();
     let ndarray_grid = Array2::from_shape_vec(dimensions, flat_grid).unwrap();
