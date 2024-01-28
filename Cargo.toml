@@ -1,6 +1,6 @@
 [package]
 name = "jane2401"
-version = "0.0.1"
+version = "0.0.3"
 authors = ["Logan Teder"]
 description = "My attempt at a solution to Jane Street's January 2024 puzzle"
 
