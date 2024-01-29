@@ -2,8 +2,8 @@ extern crate ndarray;
 extern crate rand;
 
 use std::fmt;
-use self::ndarray::Array2;
-//use self::rand::Rng;
+use self::ndarray::{Array2, Axis};
+use self::rand::Rng;
 
 #[derive(Clone)]
 pub struct Cell {
@@ -23,32 +23,17 @@ impl Cell {
 
 #[derive(Debug)]
 struct Area {
-    xs: Vec<usize>,
-    ys: Vec<usize>,
+    coords: Vec<(usize, usize)>,
 }
 
 impl Area {
     pub fn new() -> Self {
-        let xs = Vec::new();
-        let ys = Vec::new();
-        Self {xs, ys}
+        let coords: Vec<(usize, usize)> = Vec::new();
+        Self {coords}
     }
 
-    pub fn push_cell(&mut self, cell: (usize, usize)) {
-        self.xs.push(cell.0 as usize);
-        self.ys.push(cell.1 as usize);
-    }
-}
-
-#[derive(Debug)]
-pub struct FSquares {
-    squares: Vec<Area>
-}
-
-impl FSquares {
-    pub fn new() -> Self {
-        let squares = Vec::new();
-        Self {squares: squares}
+    pub fn push_cell_loc(&mut self, cell: (usize, usize)) {
+        self.coords.push(cell);
     }
 }
 
@@ -109,37 +94,46 @@ impl Board {
         }
     }
 
-    pub fn get_score(&self) -> usize {
-        //println!("Getting area scores...");
+    pub fn get_score(&self) -> Result<usize, &'static str> {
+        // Area score
         let areas = self.get_areas();
-        let mut sum: usize;
-        for (i, area) in areas.iter().enumerate() {
-            sum = 0;
-            for (&x, &y) in area.xs.iter().zip(&area.ys) {
-                sum += self.grid[[x, y]].fi;
+        let mut sums: Vec<usize> = Vec::new();
+        for area in areas.iter() {
+            let mut sum = 0;
+            for (x, y) in area.coords.iter() {
+                sum += self.grid[[*x, *y]].fi;
             }
-            //println!("{:>2}: {}", i, sum);
+            sums.push(sum);
+        }
+        let sums_same = match sums.first() { // Ensure every element is the same
+            None => true,
+            Some(first) => sums.iter().all(|&x| x == *first),
+        };
+        if !sums_same {
+            return Err("Not all area sums are the same");
         }
         
-        //println!("Getting axis scores...");
-        let row_sums: Vec<usize> = self.grid.axis_iter(ndarray::Axis(0))
+        // Axis score
+        let row_sums: Vec<usize> = self.grid.axis_iter(Axis(0))
             .map(|row| row.map(|cell| cell.fi).sum())
             .collect();
-        let col_sums: Vec<usize> = self.grid.axis_iter(ndarray::Axis(1))
+        let col_sums: Vec<usize> = self.grid.axis_iter(Axis(1))
             .map(|col| col.map(|cell| cell.fi).sum())
             .collect();
-        //println!("{:?}\n{:?}", row_sums, col_sums);
+        if row_sums != self.row_hashes {
+            return Err("Row sums do not match the board specification");
+        }
+        if col_sums != self.col_hashes {
+            return Err("Column sums do not match the board specification");
+        }
 
-        //println!("Getting blank cells...");
+        // Blank cells score (product of the length of each blank area)
         let blank_areas = self.get_blank_areas();
-        //println!("Getting product of the length of each blank area...");
         let mut product: usize = 1;
         for area in blank_areas.iter() {
-            let length = area.xs.len();
-            product *= length;
+            product *= area.coords.len();
         }
-        //println!("{:?}", blank_areas);
-        product
+        Ok(product)
     }
     
     fn get_areas(&self) -> Vec<Area> {
@@ -163,7 +157,7 @@ impl Board {
             return;
         }
 
-        area.push_cell((j, i)); // get_areas and visited does y then x
+        area.push_cell_loc((j, i)); // get_areas and visited does y then x
         visited[i][j] = true;
 
         let cell = &self.grid[[i, j]];
@@ -202,7 +196,7 @@ impl Board {
             return;
         }
 
-        area.push_cell((j, i)); // get_areas and visited does y then x
+        area.push_cell_loc((j, i)); // get_areas and visited does y then x
         visited[i][j] = true;
 
         if i + 1 < self.grid.nrows() && self.grid[[i + 1, j]].fi == 0 {
@@ -217,6 +211,28 @@ impl Board {
         if j > 0 && self.grid[[i, j - 1]].fi == 0 {
             self.find_blank_area(i, j - 1, visited, area);
         }
+    }
+
+    pub fn reset_fis(&mut self){
+        for cell in self.grid.iter_mut() {
+            cell.fi = 0;
+        }
+    }
+}
+
+#[derive(Debug)]
+struct FSquares {
+    squares: Vec<Area>
+}
+
+impl FSquares {
+    pub fn new() -> Self {
+        let squares = Vec::new();
+        Self {squares: squares}
+    }
+
+    pub fn add(&mut self, area: Area) {
+        self.squares.push(area);
     }
 }
 
@@ -233,35 +249,125 @@ impl RandomSearch {
         }
     }
 
-    fn attempt_generation(&self) {
-
+    fn attempt_generation(&mut self, squares: &mut FSquares) -> Result<(), &'static str> {
+        let mut rng = rand::thread_rng();
+        // Randomly select a side length 1 through 5 and rotation
+        let size = rng.gen_range(1..=5);
+        let side_length = size * 3;
+        let rotation = rng.gen_range(0..=3);
+        // Randomly select a square of cells in self.board using that side length
+        let max_row_index = self.board.grid.nrows() - side_length;
+        let max_col_index = self.board.grid.ncols() - side_length;
+        // Define indexing values
+        let start_row = rng.gen_range(0..=max_row_index);
+        let start_col = rng.gen_range(0..=max_col_index);
+        let center_start_row = start_row + side_length / 3; // p + s/3 = p + s/2 - s/3/2
+        let center_start_col = start_col + side_length / 3;
+        let start = (center_start_row, center_start_col);
+        let mut is_occupied = false;
+        // See if randomly-placed F-square is valid
+        let locs = self.get_fshape_locs(start, size, rotation);
+        for (i, j) in &locs {
+            if self.board.grid[[*i, *j]].fi != 0 {
+                is_occupied = true;
+                break;
+            }
+        }
+        if is_occupied { // Window is occupied, so we skip this iteration
+            Err("Window is occupied")
+        } else { // Place it
+            let mut area = Area::new();
+            for (i, j) in &locs {
+                self.board.grid[[*i, *j]].fi = side_length;
+                area.push_cell_loc((*i, *j));
+            }
+            squares.add(area);
+            Ok(())
+        }
     }
 
-    fn generate_squares(&self) -> FSquares {
-        const MAX_ATTEMPTS: usize = 1000;
-        let mut attempts = 0;
-        while attempts < MAX_ATTEMPTS {
-            attempts += 1;
+    fn get_fshape_locs(&self, start: (usize, usize), size: usize, rotation: usize) -> Vec<(usize, usize)> {
+        let (start_row, start_col) = start;
+        let mut cell_locs = Vec::new();
+        cell_locs.push(start);
+        for i in 0..size { // subcells
+            let sri = start_row + i;
+            let sci = start_col + i;
+            match rotation { // same shape, rotated
+                0 => {
+                    cell_locs.push((sri,        sci - size)); // left
+                    cell_locs.push((sri,        sci + size)); // right
+                    cell_locs.push((sri + size, sci));        // bottom
+                    cell_locs.push((sri - size, sci + size)); // above the right
+                },
+                1 => {
+                    cell_locs.push((sri,        sci - size)); // left
+                    cell_locs.push((sri - size, sci));        // top
+                    cell_locs.push((sri + size, sci));        // bottom
+                    cell_locs.push((sri + size, sci + size)); // right of bottom
+                },
+                2 => {
+                    cell_locs.push((sri,        sci - size)); // left
+                    cell_locs.push((sri - size, sci));        // top
+                    cell_locs.push((sri,        sci + size)); // right
+                    cell_locs.push((sri + size, sci - size)); // below the left
+                },
+                3 => {
+                    cell_locs.push((sri - size, sci));        // top
+                    cell_locs.push((sri,        sci + size)); // right
+                    cell_locs.push((sri + size, sci));        // bottom
+                    cell_locs.push((sri - size, sci - size)); // left of top
+                },
+                _ => (),
+            }
         }
+        cell_locs
+    }
+
+    fn generate_squares(&mut self) -> (FSquares, usize) {
+        const MAX_ATTEMPTS: usize = 1000;
         let squares = FSquares::new();
-        squares
+        let score = 0;
+        let mut _loop_count = 0;
+        loop {
+            self.board.reset_fis();
+            let mut _error_count = 0;
+            let mut squares = FSquares::new();
+            for _ in 0..MAX_ATTEMPTS { // Try to build a board one f-square at a time
+                let result = self.attempt_generation(&mut squares);
+                if result.is_err() {
+                    _error_count += 1;
+                }
+            }
+            // Return the result or retry
+            let score = self.board.get_score();
+            if score.is_ok() {
+                break;
+            } else {
+                _loop_count += 1;
+                println!("Scoring error: {}", score.unwrap_err());
+            }
+        }
+        println!("{} loops", _loop_count);
+        (squares, score)
     }
 
     pub fn run(&mut self) {
-        //let mut rng = rand::thread_rng();
-        let mut squares: FSquares = self.generate_squares();
-        let mut score = self.board.get_score();
-        let mut best = squares;
+        let mut squares: FSquares;
+        let mut best = FSquares::new();
+        let mut score = 99999999999999;
         let mut best_score = score;
-        println!("\nBoard:\n{}\nFirst Score: {}", self.board, score);
+        println!("\nBoard:\n{}", self.board);
+        let pb = indicatif::ProgressBar::new(self.iterations as u64);
         for _ in 0..self.iterations {
-            squares = self.generate_squares();
-            score = self.board.get_score();
+            pb.inc(1);
+            (squares, score) = self.generate_squares();
             if score > best_score {
                 best_score = score;
                 best = squares;
             }
         }
+        pb.finish();
         println!("\nBest:\n{:?}\nScore: {}", best, best_score)
     }
 }

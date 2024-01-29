@@ -1,11 +1,12 @@
 [package]
 name = "jane2401"
-version = "0.0.3"
+version = "0.0.4"
 authors = ["Logan Teder"]
 description = "My attempt at a solution to Jane Street's January 2024 puzzle"
 
 [dependencies]
 clap = { version = "4.3", features = ["derive"] }
+indicatif = "0.17.7"
 ndarray = "0.15.6"
 rand = "0.8"
 
