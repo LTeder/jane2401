@@ -23,7 +23,7 @@ impl Cell {
 
 #[derive(Debug)]
 struct Area {
-    coords: Vec<(usize, usize)>,
+    coords: Vec<(usize, usize)>, // i, j
 }
 
 impl Area {
@@ -94,7 +94,7 @@ impl Board {
         }
     }
 
-    pub fn get_score(&self) -> Result<usize, &'static str> {
+    fn get_score(&self, fsquares: &Vec<Area>) -> Result<usize, &'static str> {
         // Area score
         let areas = self.get_areas();
         let mut sums: Vec<usize> = Vec::new();
@@ -112,7 +112,8 @@ impl Board {
         if !sums_same {
             return Err("Not all area sums are the same");
         }
-        
+        println!("{:?}\n{:?}", fsquares, sums);
+                
         // Axis score
         let row_sums: Vec<usize> = self.grid.axis_iter(Axis(0))
             .map(|row| row.map(|cell| cell.fi).sum())
@@ -157,7 +158,7 @@ impl Board {
             return;
         }
 
-        area.push_cell_loc((j, i)); // get_areas and visited does y then x
+        area.push_cell_loc((i, j));
         visited[i][j] = true;
 
         let cell = &self.grid[[i, j]];
@@ -196,7 +197,7 @@ impl Board {
             return;
         }
 
-        area.push_cell_loc((j, i)); // get_areas and visited does y then x
+        area.push_cell_loc((i, j));
         visited[i][j] = true;
 
         if i + 1 < self.grid.nrows() && self.grid[[i + 1, j]].fi == 0 {
@@ -213,26 +214,10 @@ impl Board {
         }
     }
 
-    pub fn reset_fis(&mut self){
+    fn reset_fis(&mut self){
         for cell in self.grid.iter_mut() {
             cell.fi = 0;
         }
-    }
-}
-
-#[derive(Debug)]
-struct FSquares {
-    squares: Vec<Area>
-}
-
-impl FSquares {
-    pub fn new() -> Self {
-        let squares = Vec::new();
-        Self {squares: squares}
-    }
-
-    pub fn add(&mut self, area: Area) {
-        self.squares.push(area);
     }
 }
 
@@ -249,10 +234,10 @@ impl RandomSearch {
         }
     }
 
-    fn attempt_generation(&mut self, squares: &mut FSquares) -> Result<(), &'static str> {
+    fn attempt_generation(&mut self, fsquares: &mut Vec<Area>) -> Result<(), &'static str> {
         let mut rng = rand::thread_rng();
         // Randomly select a side length 1 through 5 and rotation
-        let size = rng.gen_range(1..=5);
+        let size = rng.gen_range(1..=3);
         let side_length = size * 3;
         let rotation = rng.gen_range(0..=3);
         // Randomly select a square of cells in self.board using that side length
@@ -281,7 +266,7 @@ impl RandomSearch {
                 self.board.grid[[*i, *j]].fi = side_length;
                 area.push_cell_loc((*i, *j));
             }
-            squares.add(area);
+            fsquares.push(area);
             Ok(())
         }
     }
@@ -324,28 +309,29 @@ impl RandomSearch {
         cell_locs
     }
 
-    fn generate_squares(&mut self) -> (FSquares, usize) {
-        const MAX_ATTEMPTS: usize = 1000;
-        let squares = FSquares::new();
+    fn generate_squares(&mut self) -> (Vec<Area>, usize) {
+        const MAX_ATTEMPTS: usize = 100000;
+        let squares = Vec::new();
         let score = 0;
         let mut _loop_count = 0;
         loop {
             self.board.reset_fis();
             let mut _error_count = 0;
-            let mut squares = FSquares::new();
-            for _ in 0..MAX_ATTEMPTS { // Try to build a board one f-square at a time
-                let result = self.attempt_generation(&mut squares);
+            let mut fsquares = Vec::new();
+            let random_attempts = rand::thread_rng().gen_range(MAX_ATTEMPTS/1000..=MAX_ATTEMPTS);
+            for _ in 0..random_attempts { // Try to build a board one f-square at a time
+                let result = self.attempt_generation(&mut fsquares);
                 if result.is_err() {
                     _error_count += 1;
                 }
             }
             // Return the result or retry
-            let score = self.board.get_score();
+            let score = self.board.get_score(&fsquares);
             if score.is_ok() {
                 break;
             } else {
                 _loop_count += 1;
-                println!("Scoring error: {}", score.unwrap_err());
+                //println!("Scoring error: {}", score.unwrap_err());
             }
         }
         println!("{} loops", _loop_count);
@@ -353,8 +339,8 @@ impl RandomSearch {
     }
 
     pub fn run(&mut self) {
-        let mut squares: FSquares;
-        let mut best = FSquares::new();
+        let mut squares: Vec<Area>;
+        let mut best: Vec<Area> = Vec::new();
         let mut score = 99999999999999;
         let mut best_score = score;
         println!("\nBoard:\n{}", self.board);
